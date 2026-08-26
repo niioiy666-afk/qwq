@@ -1,0 +1,24 @@
+{
+  "sources": {
+    "coop": [
+      "https://coop-land.ru/games/",
+      "https://coop-land.ru/allgames/"
+    ],
+    "freebies": [
+      "https://gamehunters.pro/freebies",
+      "https://cubiq.ru/razdachi/",
+      "https://playground.ru/news/freebies"
+    ],
+    "single": [
+      "https://iwant.games/single-igry/"
+    ],
+    "toplists": [
+      "https://vgtimes.ru/games/compilations/luchshie-kooperativnye-igry/"
+    ]
+  },
+  "blocked_tokens": [],
+  "game_path_tokens": ["/games/"],
+  "category_path_tokens": [],
+  "min_title_len": 3,
+  "max_results": 25
+}
