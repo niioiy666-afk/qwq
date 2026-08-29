@@ -4,6 +4,15 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
+import logging
+
+# Настройка логирования
+logging.basicConfig(
+    filename="app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    encoding="utf-8"
+)
 
 BASE = Path(__file__).parent
 CFG = json.loads((BASE / "config.json").read_text(encoding="utf-8"))
@@ -17,88 +26,115 @@ def load_session():
     if SESSION_FILE.exists():
         try:
             return set(json.loads(SESSION_FILE.read_text(encoding="utf-8")))
-        except Exception:
+        except Exception as e:
+            logging.error(f"Ошибка загрузки сессии: {e}")
             return set()
     return set()
 
 
 def save_session(s):
-    SESSION_FILE.write_text(
-        json.dumps(sorted(s), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    try:
+        SESSION_FILE.write_text(
+            json.dumps(sorted(s), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logging.error(f"Ошибка сохранения сессии: {e}")
 
 
 def load_csv(path):
     if not path.exists():
+        logging.warning(f"Файл {path} не найден")
         return []
-    lines = path.read_text(encoding="utf-8-sig").splitlines()
-    if len(lines) <= 1:
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+        if len(lines) <= 1:
+            logging.warning(f"Файл {path} пуст или содержит только заголовок")
+            return []
+        out = []
+        for line in lines[1:]:
+            parts = line.split(",")
+            if parts and parts[0].strip():
+                out.append(
+                    {
+                        "name": parts[0].strip(),
+                        "url": parts[-1].strip() if len(parts) >= 2 else "",
+                    }
+                )
+        return out
+    except Exception as e:
+        logging.error(f"Ошибка чтения файла {path}: {e}")
         return []
-    out = []
-    for line in lines[1:]:
-        parts = line.split(",")
-        if parts and parts[0].strip():
-            out.append(
-                {
-                    "name": parts[0].strip(),
-                    "url": parts[-1].strip() if len(parts) >= 2 else "",
-                }
-            )
-    return out
 
 
 def save_csv(path, games):
-    lines = ["name,confidence,reason,url"]
-    for g in games:
-        lines.append(
-            f"{g.get('name', '').replace(',', ' ')},"
-            f"{g.get('confidence', '')},"
-            f"{g.get('reason', '').replace(',', ' ')},"
-            f"{g.get('url', '').replace(',', '%2C')}"
-        )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        lines = ["name,confidence,reason,url"]
+        for g in games:
+            lines.append(
+                f"{g.get('name', '').replace(',', ' ')},"
+                f"{g.get('confidence', '')},"
+                f"{g.get('reason', '').replace(',', ' ')},"
+                f"{g.get('url', '').replace(',', '%2C')}"
+            )
+        path.write_text("
+".join(lines) + "
+", encoding="utf-8")
+    except Exception as e:
+        logging.error(f"Ошибка сохранения файла {path}: {e}")
 
 
 def load_library():
     games = []
     if not LIBRARY_FILE.exists():
+        logging.warning(f"Файл {LIBRARY_FILE} не найден")
         return games
 
-    lines = LIBRARY_FILE.read_text(encoding="utf-8-sig").splitlines()
-    if len(lines) <= 1:
-        return games
+    try:
+        lines = LIBRARY_FILE.read_text(encoding="utf-8-sig").splitlines()
+        if len(lines) <= 1:
+            logging.warning(f"Файл {LIBRARY_FILE} пуст или содержит только заголовок")
+            return games
 
-    headers = [h.strip() for h in lines[0].split(",")]
-    idx_map = {name: i for i, name in enumerate(headers)}
+        headers = [h.strip() for h in lines[0].split(",")]
+        required_columns = {"name", "url"}
+        if not required_columns.issubset(set(headers)):
+            missing = required_columns - set(headers)
+            logging.error(f"В файле {LIBRARY_FILE} отсутствуют обязательные колонки: {missing}")
+            return games
 
-    def get(parts, key, default=""):
-        idx = idx_map.get(key)
-        if idx is None or idx >= len(parts):
-            return default
-        return parts[idx].strip()
+        idx_map = {name: i for i, name in enumerate(headers)}
 
-    for line in lines[1:]:
-        if not line.strip():
-            continue
-        parts = line.split(",")
+        def get(parts, key, default=""):
+            idx = idx_map.get(key)
+            if idx is None or idx >= len(parts):
+                return default
+            return parts[idx].strip()
 
-        name = get(parts, "name")
-        if not name:
-            continue
+        for line in lines[1:]:
+            if not line.strip():
+                continue
+            parts = line.split(",")
 
-        games.append(
-            {
-                "name": name,
-                "platform": get(parts, "platform"),
-                "coop_players": get(parts, "coop_players"),
-                "has_pvp": get(parts, "has_pvp"),
-                "year": get(parts, "year"),
-                "genre": get(parts, "genre"),
-                "free2play": get(parts, "free2play"),
-                "url": get(parts, "url"),
-            }
-        )
+            name = get(parts, "name")
+            if not name:
+                continue
+
+            games.append(
+                {
+                    "name": name,
+                    "platform": get(parts, "platform"),
+                    "coop_players": get(parts, "coop_players"),
+                    "has_pvp": get(parts, "has_pvp"),
+                    "year": get(parts, "year"),
+                    "genre": get(parts, "genre"),
+                    "free2play": get(parts, "free2play"),
+                    "url": get(parts, "url"),
+                }
+            )
+
+    except Exception as e:
+        logging.error(f"Ошибка загрузки библиотеки игр: {e}")
 
     return games
 
@@ -290,6 +326,12 @@ class App(tk.Tk):
 
             self.after(0, fail)
 
+    def _show_error(self, error_message):
+        messagebox.showerror("Ошибка поиска", error_message)
+        self.status.set(f"Ошибка: {error_message}")
+        self.set_busy(False)
+        self.searching = False
+
     def reset_session(self):
         self.session.clear()
         save_session(self.session)
@@ -314,15 +356,24 @@ class App(tk.Tk):
             known.add(bn)
             added += 1
 
-        LIB_FILE.write_text(
-            "name,url\n"
-            + "\n".join(
-                f"{x['name'].replace(',', ' ')},{x.get('url', '').replace(',', '%2C')}"
-                for x in existing
+        try:
+            LIB_FILE.write_text(
+                "name,url
+"
+                + "
+".join(
+                    f"{x['name'].replace(',', ' ')},{x.get('url', '').replace(',', '%2C')}"
+                    for x in existing
+                )
+                + "
+",
+                encoding="utf-8",
             )
-            + "\n",
-            encoding="utf-8",
-        )
+        except Exception as e:
+            logging.error(f"Ошибка сохранения файла {LIB_FILE}: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось сохранить изменения: {e}")
+            return
+
         self.status.set(f"Added {added} games to my_games.csv")
         messagebox.showinfo("Add", f"Added {added} games")
 
